@@ -1,6 +1,6 @@
 -- ============================================
--- MOBILE FLY GUI (Для Android/iOS)
--- Адаптировано для тачскрина
+-- SIMPLE JOYSTICK FLY (Mobile)
+-- Рабочий джойстик без глюков
 -- ============================================
 
 local Players = game:GetService("Players")
@@ -10,147 +10,166 @@ local camera = workspace.CurrentCamera
 
 local config = {
     flyEnabled = false,
-    flySpeed = 50,
-    walkSpeed = 16
+    flySpeed = 50
 }
 
 local bodyVel, bodyGyro
-local moveDirection = Vector3.new(0, 0, 0)
+local joystickActive = false
+local joystickPosition = nil
+local moveVector = Vector3.new(0, 0, 0)
 
 -- ============================================
--- GUI ДЛЯ МОБИЛЬНЫХ
+-- ПРОСТОЙ GUI
 -- ============================================
 
 pcall(function()
-    if player:WaitForChild("PlayerGui", 5):FindFirstChild("MobileFlyGui") then
-        player.PlayerGui.MobileFlyGui:Destroy()
+    if player:WaitForChild("PlayerGui", 5):FindFirstChild("SimpleFlyGui") then
+        player.PlayerGui.SimpleFlyGui:Destroy()
     end
 
     local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "MobileFlyGui"
+    ScreenGui.Name = "SimpleFlyGui"
     ScreenGui.ResetOnSpawn = false
     ScreenGui.IgnoreGuiInset = true
     ScreenGui.Parent = player.PlayerGui
 
-    -- Кнопка включения полёта (БОЛЬШАЯ для пальца)
-    local flyButton = Instance.new("TextButton")
-    flyButton.Size = UDim2.new(0, 150, 0, 60)
-    flyButton.Position = UDim2.new(0, 20, 0.7, 0)
-    flyButton.BackgroundColor3 = Color3.fromRGB(80, 150, 255)
-    flyButton.Text = "✈️ ПОЛЁТ"
-    flyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    flyButton.Font = Enum.Font.GothamBold
-    flyButton.TextSize = 20
-    flyButton.Parent = ScreenGui
+    -- Кнопка ВКЛ/ВЫКЛ полёт
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Size = UDim2.new(0, 120, 0, 50)
+    toggleBtn.Position = UDim2.new(0, 20, 0.7, 0)
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    toggleBtn.Text = "ПОЛЁТ: ВЫКЛ"
+    toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleBtn.Font = Enum.Font.GothamBold
+    toggleBtn.TextSize = 16
+    toggleBtn.Parent = ScreenGui
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
-    corner.Parent = flyButton
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = toggleBtn
 
     -- Кнопка скорости
-    local speedButton = Instance.new("TextButton")
-    speedButton.Size = UDim2.new(0, 150, 0, 60)
-    speedButton.Position = UDim2.new(0, 20, 0.8, 0)
-    speedButton.BackgroundColor3 = Color3.fromRGB(80, 200, 100)
-    speedButton.Text = "🏃 СКОРОСТЬ"
-    speedButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    speedButton.Font = Enum.Font.GothamBold
-    speedButton.TextSize = 18
-    speedButton.Parent = ScreenGui
+    local speedBtn = Instance.new("TextButton")
+    speedBtn.Size = UDim2.new(0, 120, 0, 50)
+    speedBtn.Position = UDim2.new(0, 20, 0.8, 0)
+    speedBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 100)
+    speedBtn.Text = "СКОРОСТЬ: 50"
+    speedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedBtn.Font = Enum.Font.GothamBold
+    speedBtn.TextSize = 14
+    speedBtn.Parent = ScreenGui
 
     local speedCorner = Instance.new("UICorner")
-    speedCorner.CornerRadius = UDim.new(0, 10)
-    speedCorner.Parent = speedButton
+    speedCorner.CornerRadius = UDim.new(0, 8)
+    speedCorner.Parent = speedBtn
 
-    -- Джойстик для управления полётом (появляется при включении)
-    local joystickFrame = Instance.new("Frame")
-    joystickFrame.Size = UDim2.new(0, 200, 0, 200)
-    joystickFrame.Position = UDim2.new(0.5, -100, 0.5, -100)
-    joystickFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    joystickFrame.BackgroundTransparency = 0.5
-    joystickFrame.Visible = false
-    joystickFrame.Parent = ScreenGui
+    -- Джойстик (круг)
+    local joystickBase = Instance.new("Frame")
+    joystickBase.Name = "JoystickBase"
+    joystickBase.Size = UDim2.new(0, 150, 0, 150)
+    joystickBase.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    joystickBase.BackgroundTransparency = 0.7
+    joystickBase.BorderSizePixel = 2
+    joystickBase.BorderColor3 = Color3.fromRGB(100, 100, 100)
+    joystickBase.Visible = false
+    joystickBase.Parent = ScreenGui
 
-    local joystickCorner = Instance.new("UICorner")
-    joystickCorner.CornerRadius = UDim.new(1, 0)
-    joystickCorner.Parent = joystickFrame
+    local baseCircle = Instance.new("UICorner")
+    baseCircle.CornerRadius = UDim.new(1, 0)
+    baseCircle.Parent = joystickBase
 
-    local joystickKnob = Instance.new("Frame")
-    joystickKnob.Size = UDim2.new(0, 60, 0, 60)
-    joystickKnob.Position = UDim2.new(0.5, -30, 0.5, -30)
-    joystickKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    joystickKnob.Parent = joystickFrame
+    -- Стик (маленький круг)
+    local joystickStick = Instance.new("Frame")
+    joystickStick.Name = "JoystickStick"
+    joystickStick.Size = UDim2.new(0, 50, 0, 50)
+    joystickStick.Position = UDim2.new(0.5, -25, 0.5, -25)
+    joystickStick.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+    joystickStick.BorderSizePixel = 0
+    joystickStick.Parent = joystickBase
 
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(1, 0)
-    knobCorner.Parent = joystickKnob
+    local stickCircle = Instance.new("UICorner")
+    stickCircle.CornerRadius = UDim.new(1, 0)
+    stickCircle.Parent = joystickStick
 
-    -- Включение/выключение полёта
-    flyButton.MouseButton1Click:Connect(function()
+    -- Инструкция
+    local info = Instance.new("TextLabel")
+    info.Size = UDim2.new(0, 200, 0, 30)
+    info.Position = UDim2.new(0.5, -100, 0.9, 0)
+    info.BackgroundTransparency = 1
+    info.Text = "Коснись экрана для джойстика"
+    info.TextColor3 = Color3.fromRGB(255, 255, 255)
+    info.Font = Enum.Font.Gotham
+    info.TextSize = 14
+    info.TextStrokeTransparency = 0.5
+    info.Parent = ScreenGui
+
+    -- ВКЛ/ВЫКЛ полёт
+    toggleBtn.MouseButton1Click:Connect(function()
         config.flyEnabled = not config.flyEnabled
         if config.flyEnabled then
-            flyButton.BackgroundColor3 = Color3.fromRGB(255, 100, 100)
-            flyButton.Text = "✈️ СТОП"
-            joystickFrame.Visible = true
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+            toggleBtn.Text = "ПОЛЁТ: ВКЛ"
+            joystickBase.Visible = true
         else
-            flyButton.BackgroundColor3 = Color3.fromRGB(80, 150, 255)
-            flyButton.Text = "✈️ ПОЛЁТ"
-            joystickFrame.Visible = false
-            moveDirection = Vector3.new(0, 0, 0)
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+            toggleBtn.Text = "ПОЛЁТ: ВЫКЛ"
+            joystickBase.Visible = false
+            moveVector = Vector3.new(0, 0, 0)
         end
     end)
 
-    -- Увеличение скорости
-    speedButton.MouseButton1Click:Connect(function()
-        config.walkSpeed = config.walkSpeed + 16
-        if config.walkSpeed > 100 then config.walkSpeed = 16 end
-        
-        local char = player.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then hum.WalkSpeed = config.walkSpeed end
-        end
-        
-        speedButton.Text = "🏃 " .. config.walkSpeed
+    -- Смена скорости
+    local speeds = {16, 30, 50, 80, 100}
+    local currentSpeedIndex = 3
+    
+    speedBtn.MouseButton1Click:Connect(function()
+        currentSpeedIndex = currentSpeedIndex + 1
+        if currentSpeedIndex > #speeds then currentSpeedIndex = 1 end
+        config.flySpeed = speeds[currentSpeedIndex]
+        speedBtn.Text = "СКОРОСТЬ: " .. config.flySpeed
     end)
 
-    -- Управление джойстиком
-    local dragging = false
-    local joystickCenter = Vector2.new(0, 0)
-
-    joystickFrame.InputBegan:Connect(function(input)
+    -- Управление джойстиком через касание экрана
+    local screenGui = ScreenGui
+    
+    screenGui.InputBegan:Connect(function(input)
+        if not config.flyEnabled then return end
         if input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            joystickCenter = joystickFrame.AbsolutePosition + joystickFrame.AbsoluteSize / 2
+            joystickActive = true
+            joystickPosition = input.Position
+            joystickBase.Position = UDim2.new(0, joystickPosition.X - 75, 0, joystickPosition.Y - 75)
+            joystickBase.Visible = true
         end
     end)
 
-    joystickFrame.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.Touch then
-            local delta = input.Position - joystickCenter
-            local magnitude = delta.Magnitude
-            local maxRadius = 100
-            
-            if magnitude > maxRadius then
-                delta = (delta / magnitude) * maxRadius
-            end
-            
-            joystickKnob.Position = UDim2.new(0.5, delta.X, 0.5, delta.Y)
-            
-            -- Преобразуем в направление движения
-            moveDirection = Vector3.new(delta.X, 0, -delta.Y).Unit * (magnitude / maxRadius)
-        end
-    end)
-
-    joystickFrame.InputEnded:Connect(function(input)
+    screenGui.InputChanged:Connect(function(input)
+        if not joystickActive then return end
         if input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-            joystickKnob.Position = UDim2.new(0.5, 0, 0.5, 0)
-            moveDirection = Vector3.new(0, 0, 0)
+            local center = joystickBase.AbsolutePosition + joystickBase.AbsoluteSize / 2
+            local delta = input.Position - center
+            local distance = math.min(delta.Magnitude, 75)
+            local direction = delta.Unit
+            
+            local newPos = center + direction * distance
+            joystickStick.Position = UDim2.new(0, newPos.X - joystickBase.AbsolutePosition.X - 25, 0, newPos.Y - joystickBase.AbsolutePosition.Y - 25)
+            
+            -- Вычисляем вектор движения
+            local x = delta.X / 75
+            local y = delta.Y / 75
+            moveVector = Vector3.new(x, -y, 0)
         end
     end)
 
-    print("✅ Mobile Fly GUI загружен!")
+    screenGui.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            joystickActive = false
+            joystickStick.Position = UDim2.new(0.5, -25, 0.5, -25)
+            moveVector = Vector3.new(0, 0, 0)
+        end
+    end)
+
+    print("✅ Simple Joystick Fly загружен!")
+    print("📱 Коснись экрана чтобы управлять")
 end)
 
 -- ============================================
@@ -175,25 +194,34 @@ RunService.RenderStepped:Connect(function()
                 bodyGyro = Instance.new("BodyGyro")
                 bodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
                 bodyGyro.P = 9000
+                bodyGyro.CFrame = camera.CFrame
                 bodyGyro.Parent = root
                 
                 hum.PlatformStand = true
             end
             
-            -- Движение от джойстика
-            local move = moveDirection
-            
-            -- Вверх/вниз (кнопки на экране можно добавить)
-            if move.Magnitude > 0 then
-                bodyVel.Velocity = move * config.flySpeed
-                bodyGyro.CFrame = camera.CFrame
+            -- Движение по джойстику
+            if moveVector.Magnitude > 0.1 then
+                local camCFrame = camera.CFrame
+                local moveDirection = (camCFrame.RightVector * moveVector.X) + (camCFrame.UpVector * -moveVector.Y)
+                bodyVel.Velocity = moveDirection * config.flySpeed
             else
                 bodyVel.Velocity = Vector3.new(0, 0, 0)
             end
+            
+            bodyGyro.CFrame = camera.CFrame
         else
-            if bodyVel then bodyVel:Destroy(); bodyVel = nil end
-            if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
-            if hum.PlatformStand then hum.PlatformStand = false end
+            if bodyVel then 
+                bodyVel:Destroy()
+                bodyVel = nil 
+            end
+            if bodyGyro then 
+                bodyGyro:Destroy()
+                bodyGyro = nil 
+            end
+            if hum and hum.PlatformStand then 
+                hum.PlatformStand = false 
+            end
         end
     end)
 end)
